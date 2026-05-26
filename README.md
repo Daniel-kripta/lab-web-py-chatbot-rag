@@ -1,95 +1,130 @@
-![logo_ironhack_blue 7](https://user-images.githubusercontent.com/23629340/40541063-a07a0a8a-601a-11e8-91b5-2f13e4e6b441.png)
+# Chatbot RAG — Guía de Gran Canaria
 
-# Lab | Chatbot con RAG sobre documentos propios
+Chatbot que responde preguntas sobre Gran Canaria usando RAG (Retrieval-Augmented Generation). Recupera fragmentos relevantes de documentos propios y los usa como contexto para generar respuestas precisas. Funciona 100% en local con Ollama.
 
-## Objetivo
+Los documentos del corpus están extraídos del [artículo de Wikipedia sobre Gran Canaria](https://es.wikipedia.org/wiki/Gran_Canaria), reorganizados por temática en cinco ficheros independientes.
 
-Construir un chatbot que responda preguntas sobre un conjunto de documentos usando RAG. El sistema debe ser honesto cuando no tiene información suficiente y debe proteger la privacidad del usuario.
+## Stack
 
-Aunque lo construyas con Python, ya sabemos que nuestros ordenadores no son capaces de gestionar un entrenamiento. Por lo que haz la programación en Python para que aprendas cómo funciona, pero a la hora de conectarlo usa un modelo ya entrenado en LM Studio
+- **Embeddings** — `bge-m3` via Ollama (local)
+- **LLM** — `qwen3:14b` via Ollama (local)
+- **Vector store** — ChromaDB
+- **API** — FastAPI
 
-## Setup
+## Requisitos previos
+
+- [Ollama](https://ollama.com) instalado y corriendo
+- Modelos descargados:
+  ```bash
+  ollama pull bge-m3
+  ollama pull qwen3:14b
+  ```
+
+## Instalación
 
 ```bash
-# fork & clone the repository
+git clone <url-del-repo>
 cd lab-web-py-chatbot-rag
 python -m venv venv
 source venv/bin/activate
-pip install fastapi uvicorn openai chromadb python-dotenv tiktoken
-pip freeze > requirements.txt
+pip install -r requirements.txt
+cp .env.example .env
 ```
 
-## Dataset a usar
+## Configuración
 
-Crea una carpeta `docs/` con al menos 5 archivos `.txt` que contengan información sobre tu tema elegido. Ejemplos:
-
-- Políticas de una empresa ficticia (RR.HH., devoluciones, horarios)
-- FAQ de un producto de software
-- Reglas de un juego de mesa
-- Guía de viaje de una ciudad
-
-## Arquitectura del sistema
+El fichero `.env` ya viene preconfigurado para Ollama en local:
 
 ```
-docs/              ← tus documentos fuente
-  └── *.txt
-indexer.py         ← lee docs, crea embeddings, guarda en ChromaDB
-chatbot.py         ← RAG + LLM: responde preguntas usando el índice
-api.py             ← FastAPI que expone el chatbot
+OLLAMA_URL=http://localhost:11434/v1
+OLLAMA_MODEL=qwen3:14b
+OLLAMA_EMBED_MODEL=bge-m3
 ```
 
-## Parte 1: Indexador
+Cambia `OLLAMA_MODEL` si prefieres usar otro modelo.
 
-`indexer.py` debe:
-1. Leer todos los `.txt` de `docs/`
-2. Fragmentarlos si son largos (función de chunking)
-3. Crear embeddings con OpenAI
-4. Almacenarlos en ChromaDB con metadatos (nombre del archivo, chunk_id)
-5. Imprimir resumen: N documentos, N chunks, N tokens procesados, coste estimado
+## Indexar los documentos
 
-## Parte 2: Chatbot RAG
+Ejecutar una sola vez antes de arrancar la API:
 
-`chatbot.py` debe implementar:
-
-```python
-def chat(pregunta: str, session_id: str) -> dict:
-    """
-    1. Recupera los 3 fragmentos más relevantes
-    2. Construye el prompt con contexto
-    3. Mantiene historial de la conversación
-    4. Indica las fuentes usadas en la respuesta
-    """
-    return {
-        "respuesta": "...",
-        "fuentes": ["archivo1.txt", "archivo2.txt"],
-        "session_id": session_id,
-        "fragmentos_usados": 3
-    }
+```bash
+python indexer.py
 ```
 
-El sistema prompt debe incluir:
-- Instrucción de responder solo con el contexto disponible
-- Instrucción de decir "No tengo información sobre eso" si el contexto no es relevante
-- Instrucción de no inventar datos
+Salida esperada:
 
-## Parte 3: API FastAPI
+```
+=======================================================
+  Indexador de documentos RAG
+=======================================================
 
-`api.py` debe exponer:
-- `POST /chat` — pregunta + session_id → respuesta + fuentes
-- `GET /chat/history/{session_id}` — historial de la sesión
-- `GET /documentos` — lista de documentos indexados
+  Indexando 5 documentos...
 
-## Parte 4: Medidas de privacidad y seguridad
+  OK  atractivos.txt                             1 chunks  [ocio]
+  OK  datosgenerales.txt                         1 chunks  [general]
+  OK  geografia.txt                              1 chunks  [medio_ambiente]
+  OK  historia.txt                               1 chunks  [historia]
+  OK  naturaleza.txt                             1 chunks  [medio_ambiente]
 
-Implementa:
-- Rate limiting básico (máx 10 peticiones por minuto por IP)
-- Validación de input (longitud máxima de pregunta: 500 caracteres)
-- Logging de cada llamada (sin loguear el contenido completo de los documentos)
-- Si la pregunta contiene información personal del usuario (nombre, email), advertir antes de enviar al LLM
+=======================================================
+  Documentos indexados : 5
+  Chunks totales       : 5
+  Modelo embeddings    : bge-m3 (local, coste $0)
+  ChromaDB             : ./chroma_db/docs
+=======================================================
+```
 
-## Entrega
+## Arrancar la API
 
-- Repositorio en GitHub
-- `README.md` con instrucciones de instalación y cómo indexar los documentos
-- Capturas de conversaciones de prueba en Swagger UI o Postman
-Todos nuestros ejercicios están almacenados en GitHub, así que sigue este [enlace](https://github.com/ironhack-labs/lab-web-py-chatbot-rag) para acceder.
+```bash
+uvicorn api:app --reload
+```
+
+Swagger UI disponible en `http://localhost:8000/docs`.
+
+## Endpoints
+
+| Método | Ruta | Descripción |
+|--------|------|-------------|
+| `POST` | `/chat` | Envía una pregunta y obtiene respuesta con fuentes |
+| `GET`  | `/chat/history/{session_id}` | Historial de una sesión |
+| `GET`  | `/documentos` | Lista de documentos indexados |
+
+### POST /chat
+
+```json
+{
+  "pregunta": "¿Cuál es el clima de Gran Canaria?",
+  "session_id": "usuario-1"
+}
+```
+
+Respuesta:
+
+```json
+{
+  "respuesta": "Gran Canaria tiene un clima desértico cálido...",
+  "fuentes": ["naturaleza.txt", "geografia.txt", "datosgenerales.txt"],
+  "session_id": "usuario-1",
+  "fragmentos_usados": 3,
+  "pii_warning": null
+}
+```
+
+## Medidas de seguridad
+
+- Rate limiting: máximo 10 peticiones por minuto por IP
+- Validación: longitud máxima de pregunta 500 caracteres
+- Logging de cada llamada sin registrar el contenido de los documentos
+- Detección de datos personales (email, DNI/teléfono) con aviso en la respuesta
+
+## Capturas
+
+### POST /chat
+![POST /chat](capturas/post_chat.png)
+
+### GET /chat/history/{session_id}
+![Historial](capturas/get_history.png)
+
+### GET /documentos
+![Documentos](capturas/get_documentos.png)
