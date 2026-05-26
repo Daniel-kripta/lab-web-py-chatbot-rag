@@ -127,4 +127,4 @@ Respuesta:
 ![Historial](capturas/get_history.png)
 
 ### GET /documentos
-![Documentos](capturas/get_documentos.png)
+![Documentos](capturas/get_documents.png)
